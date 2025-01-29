@@ -29,13 +29,16 @@ type RestCallSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of RestCall. Edit restcall_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Endpoint string            `json:"endpoint"`
+	Headers  map[string]string `json:"headers,omitempty"`
 }
 
 // RestCallStatus defines the observed state of RestCall
 type RestCallStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	LastCallTime string `json:"lastCallTime,omitempty"`
+	Response     string `json:"response,omitempty"`
 }
 
 // +kubebuilder:object:root=true

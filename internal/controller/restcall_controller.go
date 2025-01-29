@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -30,7 +33,8 @@ import (
 // RestCallReconciler reconciles a RestCall object
 type RestCallReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	HTTPClient *http.Client
 }
 
 // +kubebuilder:rbac:groups=example.example.com,resources=restcalls,verbs=get;list;watch;create;update;patch;delete
@@ -47,9 +51,54 @@ type RestCallReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.4/pkg/reconcile
 func (r *RestCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var restCall examplev1alpha1.RestCall
+	if err := r.Get(ctx, req.NamespacedName, &restCall); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	endpoint := restCall.Spec.Endpoint
+	headers := restCall.Spec.Headers
+
+	httpReq, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		logger.Error(err, "Failed to create request")
+		return ctrl.Result{}, err
+	}
+
+	for k, v := range headers {
+		httpReq.Header.Add(k, v)
+	}
+
+	client := r.HTTPClient
+	if client == nil {
+		client = &http.Client{}
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		logger.Error(err, "Failed to make HTTP call")
+		return ctrl.Result{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error(err, "Failed to read response body")
+		return ctrl.Result{}, err
+	}
+
+	responseStr := string(body)
+	logger.Info("REST call response", "response", responseStr)
+
+	restCall.Status.LastCallTime = time.Now().Format(time.RFC3339)
+	restCall.Status.Response = responseStr
+
+	if err := r.Status().Update(ctx, &restCall); err != nil {
+		logger.Error(err, "Failed to update status")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }

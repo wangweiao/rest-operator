@@ -7,3 +7,5 @@ metadata:
   name: restcall-sample
 spec:
   # TODO(user): Add fields here
+  # endpoint: "https://jsonplaceholder.typicode.com/todos/1"
+  endpoint: "http://localhost:9000/o2ims-infrastructureInventory/v1/"
