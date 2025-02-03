@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,6 +33,34 @@ import (
 )
 
 var _ = Describe("RestCall Controller", func() {
+	var (
+		server     *httptest.Server
+		httpClient *http.Client
+		reconciler *RestCallReconciler
+		// logger     logr.Logger
+	)
+
+	BeforeEach(func() {
+		// Setup a test HTTP server
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("test response"))
+		}))
+
+		httpClient = server.Client()
+		// logger := zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true))
+
+		reconciler = &RestCallReconciler{
+			Client:     k8sClient,
+			Scheme:     k8sClient.Scheme(),
+			HTTPClient: httpClient,
+		}
+	})
+
+	AfterEach(func() {
+		server.Close()
+	})
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -51,7 +81,10 @@ var _ = Describe("RestCall Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: examplev1alpha1.RestCallSpec{
+						Endpoint: server.URL, // Set the endpoint to the test server's URL
+						// Add any other necessary fields here
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -79,6 +112,30 @@ var _ = Describe("RestCall Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+
+		It("should update the RestCall status with the response", func() {
+			By("Reconciling the created resource")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the status update")
+			err = k8sClient.Get(ctx, typeNamespacedName, restcall)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(restcall.Status.Response).To(Equal("test response"))
+			Expect(restcall.Status.LastCallTime).NotTo(BeEmpty())
+		})
+
+		It("should handle HTTP request errors gracefully", func() {
+			// Simulate a server error
+			server.Close()
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })

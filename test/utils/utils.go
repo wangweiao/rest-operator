@@ -17,12 +17,17 @@ limitations under the License.
 package utils
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
+	examplev1alpha1 "github.com/example/rest-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 const (
@@ -33,6 +38,24 @@ const (
 	certmanagerVersion = "v1.14.4"
 	certmanagerURLTmpl = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
 )
+
+var k8sClient client.Client
+
+func init() {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		panic(fmt.Sprintf("unable to get kubeconfig: %v", err))
+	}
+
+	scheme := runtime.NewScheme()
+	// Add your API scheme here
+	_ = examplev1alpha1.AddToScheme(scheme)
+
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		panic(fmt.Sprintf("unable to create k8s client: %v", err))
+	}
+}
 
 func warnError(err error) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
@@ -137,4 +160,19 @@ func GetProjectDir() (string, error) {
 	}
 	wd = strings.Replace(wd, "/test/e2e", "", -1)
 	return wd, nil
+}
+
+// CreateResource creates a Kubernetes resource
+func CreateResource(ctx context.Context, obj client.Object) error {
+	return k8sClient.Create(ctx, obj)
+}
+
+// GetResource retrieves a Kubernetes resource
+func GetResource(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+	return k8sClient.Get(ctx, key, obj)
+}
+
+// DeleteResource deletes a Kubernetes resource
+func DeleteResource(ctx context.Context, obj client.Object) error {
+	return k8sClient.Delete(ctx, obj)
 }

@@ -17,17 +17,23 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	examplev1alpha1 "github.com/example/rest-operator/api/v1alpha1"
 	"github.com/example/rest-operator/test/utils"
 )
 
 const namespace = "rest-operator-system"
+const endpoint = "https://jsonplaceholder.typicode.com/todos/1"
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
@@ -119,4 +125,56 @@ var _ = Describe("controller", Ordered, func() {
 
 		})
 	})
+
+	Context("RestCall Resource", func() {
+		It("should create and reconcile a RestCall resource", func() {
+			ctx := context.Background()
+			resourceName := "e2e-test-resource"
+			namespace := "default"
+
+			restCall := &examplev1alpha1.RestCall{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace,
+				},
+				Spec: examplev1alpha1.RestCallSpec{
+					Endpoint: endpoint, // Use a valid endpoint for testing
+				},
+			}
+
+			By("ensuring any existing RestCall resource is deleted")
+			_ = utils.DeleteResource(ctx, restCall) // Ignore error if resource does not exist
+
+			By("creating a RestCall resource")
+			err := utils.CreateResource(ctx, restCall)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the RestCall resource is created")
+			fetched := &examplev1alpha1.RestCall{}
+			Eventually(func() error {
+				return utils.GetResource(ctx, types.NamespacedName{Name: resourceName, Namespace: namespace}, fetched)
+			}, time.Minute, time.Second).Should(Succeed())
+
+			Expect(fetched.Spec.Endpoint).To(Equal(endpoint))
+
+			By("verifying the RestCall resource is reconciled")
+			Eventually(func() string {
+				err := utils.GetResource(ctx, types.NamespacedName{Name: resourceName, Namespace: namespace}, fetched)
+				if err != nil {
+					return ""
+				}
+				return fetched.Status.Response
+			}, time.Minute, time.Second).ShouldNot(BeEmpty())
+
+			By("deleting the RestCall resource")
+			err = utils.DeleteResource(ctx, restCall)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the RestCall resource is deleted")
+			Eventually(func() error {
+				return utils.GetResource(ctx, types.NamespacedName{Name: resourceName, Namespace: namespace}, fetched)
+			}, time.Minute, time.Second).ShouldNot(Succeed())
+		})
+	})
+
 })
